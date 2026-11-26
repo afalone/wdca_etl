@@ -11,6 +11,8 @@ class Prod
     LIST.each { |num| process_file(data, "data/messages#{num}.html") }
 
     pp data[:messages].size, data[:messages].last(5), data[:messages].first(10)
+    js = JSON.generate(data)
+    File.open('data/messages.json', 'w') { |f| f.write(js) }
   end
 
   private
@@ -65,15 +67,17 @@ class Prod
 
   def extract_userpic(msg)
     pic = msg.css('.userpic_wrap .userpic').first
-    # TODO:
-    # pp pic.attributes['src']&.value if pic
-    # pp msg.to_html unless pic && pic.attributes['src']
-    {}
+    return {} if pic.nil?
+
+    ph = pic.attributes['src']&.value
+    return { userpic: ph } if ph
+
+    color = (pic.classes - ['userpic']).first
+    initials = pic.css('.initials').first
+    { userpic_color: color, userpic_initials: initials.content.strip }
   end
 
   def extract_body(msg, obj)
-    # from_name
-    # forwarded_from
     body = msg.css('.body').first
     unless obj[:joined]
       obj.merge!(extract_date(body))
@@ -82,6 +86,12 @@ class Prod
       obj.merge!(extract_reply(body))
     end
     obj.merge!(extract_content(body))
+    obj.merge!(extract_photo(body))
+    # TODO:
+    # class="media_wrap clearfix"
+    # class="sticker_wrap clearfix pull_left"
+    # class="video_file_wrap clearfix pull_left round"
+    # class="video_file_wrap clearfix pull_left"
   end
 
   def extract_date(body)
@@ -120,6 +130,24 @@ class Prod
     return {} if txt.nil?
 
     { text: txt.inner_html.strip }
+  end
+
+  def extract_photo(body)
+    img = body.css('a.photo_wrap > img.photo').first
+    return {} if img.nil?
+
+    sizes = extract_sizes(img, 'photo_')
+    { photo: img.attributes['src'].value }.
+      merge(sizes)
+  end
+
+  def extract_sizes(tag, prefix)
+    style = tag.attributes['style']&.value
+    return {} if style.nil?
+
+    w = style.match(/width:\s*([0-9a-z]+)/ui)
+    h = style.match(/height:\s*([0-9a-z]+)/ui)
+    { :"#{prefix}width" => w[1], :"#{prefix}height" => h[1] }
   end
 end
 
